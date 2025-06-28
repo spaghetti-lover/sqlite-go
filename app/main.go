@@ -42,9 +42,12 @@ func main() {
 		// You can use print statements as follows for debugging, they'll be visible when running tests.
 		fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
-		// Uncomment this to pass the first stage
+		// Info of table named 'sqlite_schema'
 		fmt.Printf("database page size: %v", pageSize)
 		fmt.Printf("number of tables: %v", numberOfTable)
+
+	case ".tables":
+		fmt.Print("Hello")
 
 	default:
 		fmt.Println("Unknown command", command)
