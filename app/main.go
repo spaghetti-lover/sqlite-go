@@ -22,7 +22,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		header := make([]byte, 100)
+		header := make([]byte, 105)
 
 		_, err = databaseFile.Read(header)
 		if err != nil {
