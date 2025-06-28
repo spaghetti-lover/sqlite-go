@@ -34,11 +34,16 @@ func main() {
 			fmt.Println("Failed to read integer:", err)
 			return
 		}
+		var numberOfTable uint16
+		if err := binary.Read(bytes.NewReader(header[103:105]), binary.BigEndian, &numberOfTable); err != nil {
+			fmt.Println("Faield to read numberOfTable: ", err)
+			return
+		}
 		// You can use print statements as follows for debugging, they'll be visible when running tests.
 		fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
 		// Uncomment this to pass the first stage
-		fmt.Printf("database page size: %v", header)
+		fmt.Printf("database page size: %v", numberOfTable)
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)
