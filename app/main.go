@@ -43,7 +43,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
 		// Uncomment this to pass the first stage
-		fmt.Printf("database page size: %v", numberOfTable)
+		fmt.Printf("number of tables: %v", numberOfTable)
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)
