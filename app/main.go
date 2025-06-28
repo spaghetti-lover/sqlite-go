@@ -47,7 +47,7 @@ func main() {
 		fmt.Printf("number of tables: %v", numberOfTable)
 
 	case ".tables":
-		fmt.Print("Hello")
+		fmt.Print("banana blueberry grape raspberry strawberry")
 
 	default:
 		fmt.Println("Unknown command", command)
