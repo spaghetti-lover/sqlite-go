@@ -2,11 +2,8 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
-	"log"
 	"os"
-	"strings"
 )
 
 type FileHeader struct {
@@ -26,9 +23,14 @@ func BuildFileHeader(header []byte) (FileHeader, error) {
 }
 
 type PageHeader struct {
-	PageNumber      uint32 // Page number in the database file
-	PageType        uint8  // Page type (0: free, 1: leaf, 2: interior, 3: overflow, 4: table, 5: index)
-	NumberPageCells uint16 // Number of cells in the page
+	PageNumber          uint32 // Page number in the database file
+	PageType            uint8  // Page type (0: free, 1: leaf, 2: interior, 3: overflow, 4: table, 5: index)
+	NumberPageCells     uint16 // Number of cells in the page
+	FirstFreeblock      uint16
+	NumberOfCells       uint16
+	CellContentArea     uint16
+	FragmentedFreeBytes byte
+	CellPointers        []uint16
 }
 
 func BuildPageHeader(pageHeader []byte) (PageHeader, error) {
@@ -125,26 +127,6 @@ func parseVarInt(page []byte, offset int) (uint64, int) {
 	}
 
 	return result, offset + len(tempBytes)
-}
-
-func printTableNames(databaseFilePath string) {
-	databaseFile, err := os.Open(databaseFilePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer databaseFile.Close()
-
-	page, err := readFirstPage(databaseFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	tableNames, err := extractTableNames(page)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(strings.Join(tableNames, " "))
 }
 
 func readFirstPage(databaseFile *os.File) ([]byte, error) {
