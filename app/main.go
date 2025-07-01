@@ -13,20 +13,33 @@ func main() {
 	lower := strings.ToLower(command)
 	switch {
 	case lower == ".dbinfo":
-		printDbInfo(databaseFilePath)
+		pageSize, numberOfTables, err := dBInfo(databaseFilePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("database page size: ", pageSize)
+		fmt.Println("number of tables: ", numberOfTables)
 
 	case lower == ".tables":
-		printTableNames(databaseFilePath)
-
+		names, err := tableNames(databaseFilePath)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		fmt.Println(names)
 	case strings.HasPrefix(lower, "select count(*) from "):
 		parts := strings.Fields(command)
 		if len(parts) != 4 {
 			log.Fatal("Invalid COUNT query format")
 		}
 		tableName := parts[len(parts)-1]
-		fmt.Print(tableName)
-		countRows(databaseFilePath, tableName)
+		cnt, err := countRows(databaseFilePath, tableName)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
 
+		fmt.Println(cnt)
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)

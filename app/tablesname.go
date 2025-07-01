@@ -1,28 +1,25 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"os"
 	"strings"
 )
 
-func printTableNames(databaseFilePath string) {
+func tableNames(databaseFilePath string) (string, error) {
 	databaseFile, err := os.Open(databaseFilePath)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 	defer databaseFile.Close()
 
 	page, err := readFirstPage(databaseFile)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	tableNames, err := extractTableNames(page)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
-
-	fmt.Println(strings.Join(tableNames, " "))
+	return strings.Join(tableNames, " "), nil
 }
