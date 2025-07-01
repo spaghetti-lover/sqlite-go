@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"io"
+	"log"
 	"os"
 )
 
@@ -173,4 +174,85 @@ func extractTableNames(page []byte) ([]string, error) {
 		}
 	}
 	return tableNames, nil
+}
+
+func parseCellForCount(page []byte, offset int, tableName string) (string, int, bool) {
+	_, newOffset := parseVarInt(page, offset)   // payload size
+	_, newOffset = parseVarInt(page, newOffset) // rowid
+
+	startOfRecord := newOffset
+	recordHeaderSize, newOffset := parseVarInt(page, newOffset)
+
+	headerToRead := int(recordHeaderSize) - (newOffset - int(startOfRecord))
+	serialTypeCodes := make([]uint64, 0)
+	for headerToRead > 0 {
+		var serialCode uint64
+		oldOffset := newOffset
+		serialCode, newOffset = parseVarInt(page, newOffset)
+		serialTypeCodes = append(serialTypeCodes, serialCode)
+		headerToRead -= newOffset - oldOffset
+	}
+
+	values := []string{}
+	intValues := []uint64{}
+	for _, code := range serialTypeCodes {
+		switch {
+		case code >= 13 && code%2 == 1:
+			textLen := int((code - 13) / 2)
+			if newOffset+textLen > len(page) {
+				return "", 0, false
+			}
+			text := string(page[newOffset : newOffset+textLen])
+			values = append(values, text)
+			newOffset += textLen
+		case code == 1 || code == 2 || code == 3 || code == 4 || code == 5 || code == 6 || code == 8 || code == 9:
+			// These are integer types of various sizes
+			byteSize := map[uint64]int{1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 8, 8: 0, 9: 8}[code]
+			valBytes := make([]byte, 8)
+			copy(valBytes[8-byteSize:], page[newOffset:newOffset+byteSize])
+			val := binary.BigEndian.Uint64(valBytes)
+			intValues = append(intValues, val)
+			newOffset += byteSize
+		default:
+			// skip unsupported types for now
+			return "", 0, false
+		}
+	}
+
+	if len(values) > 1 && len(intValues) > 0 && values[0] == "table" && values[1] == tableName {
+		return values[1], int(intValues[0]), true
+	}
+
+	return "", 0, false
+}
+
+func parsePageHeader(r io.Reader) PageHeader {
+	header := make([]byte, 8)
+	if _, err := io.ReadFull(r, header); err != nil {
+		log.Fatalf("Failed to read page header: %v", err)
+	}
+
+	pageType := header[0]
+	firstFreeblock := binary.BigEndian.Uint16(header[1:3])
+	numCells := binary.BigEndian.Uint16(header[3:5])
+	cellContentArea := binary.BigEndian.Uint16(header[5:7])
+	fragmentedFreeBytes := header[7]
+
+	cellPointers := make([]uint16, numCells)
+	for i := 0; i < int(numCells); i++ {
+		ptr := make([]byte, 2)
+		if _, err := r.Read(ptr); err != nil {
+			log.Fatalf("Failed to read cell pointer: %v", err)
+		}
+		cellPointers[i] = binary.BigEndian.Uint16(ptr)
+	}
+
+	return PageHeader{
+		PageType:            pageType,
+		FirstFreeblock:      firstFreeblock,
+		NumberOfCells:       numCells,
+		CellContentArea:     cellContentArea,
+		FragmentedFreeBytes: fragmentedFreeBytes,
+		CellPointers:        cellPointers,
+	}
 }
