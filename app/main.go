@@ -24,6 +24,7 @@ func main() {
 			log.Fatal("Invalid COUNT query format")
 		}
 		tableName := parts[len(parts)-1]
+		fmt.Print(tableName)
 		countRows(databaseFilePath, tableName)
 
 	default:
