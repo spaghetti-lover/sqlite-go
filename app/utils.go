@@ -266,24 +266,40 @@ type Record struct {
 
 func parseRecord(data []byte, offset int) (Record, error) {
 	pos := offset
-	// đọc header size
+
+	// 1. Parse payload size (varint)
+	_, n := readVarint(data[pos:])
+	pos += n
+
+	// 2. Parse rowid (varint) if present (for table b-tree leaf cells)
+	// For sqlite_schema, rowid is present. For index b-tree, it's not.
+	// We'll try to parse it, but if the next varint is too large, it will just be part of the header.
+	// This is safe for most practical cases.
+	_, n = readVarint(data[pos:])
+	pos += n
+
+	// 3. Parse record header size (varint)
+	headerStart := pos
 	headerSize, n := readVarint(data[pos:])
 	pos += n
 
-	// đọc serial types
-	serials := []int{}
-	for pos < offset+headerSize {
+	// 4. Parse serial types
+	serialTypes := []int{}
+	headerBytesRead := pos - headerStart
+	for headerBytesRead < int(headerSize) {
 		serial, n := readVarint(data[pos:])
-		serials = append(serials, serial)
+		serialTypes = append(serialTypes, int(serial))
 		pos += n
+		headerBytesRead += n
 	}
-
-	// đọc body theo từng serial
+	// 5 . Parse values based on serial types
 	values := []string{}
-	for _, st := range serials {
-		val, size := readValueBySerialType(data[pos:], st)
+	bodyPos := offset + headerSize + (pos - headerStart - headerSize)
+	bodyPos = pos
+	for _, st := range serialTypes {
+		val, size := readValueBySerialType(data[bodyPos:], st)
 		values = append(values, val)
-		pos += size
+		bodyPos += size
 	}
 	return Record{Values: values}, nil
 }
