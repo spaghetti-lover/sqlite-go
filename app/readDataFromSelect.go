@@ -61,7 +61,7 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 			break
 		}
 	}
-	if rootpage == 0 || createSQL == "" {
+	if rootpage == 0 {
 		return nil, fmt.Errorf("table %s not found in database", tableName)
 	}
 	// Read the table's root page
