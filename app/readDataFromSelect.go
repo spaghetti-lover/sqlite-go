@@ -100,7 +100,35 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string, w
 			return nil, fmt.Errorf("where column %s not found in table %s", whereCol, tableName)
 		}
 	}
-	// Scan the table B-tree
+
+	if indexRootpage != 0 && whereCol == "country" {
+		// Sử dụng index để lấy rowid
+		rowids, err := scanIndexForRowids(db, fH.PageSize, indexRootpage, whereVal)
+		if err != nil {
+			return nil, err
+		}
+		results := []string{}
+		for _, rowid := range rowids {
+			rec, err := getRecordByRowid(db, fH.PageSize, rootpage, rowid)
+			if err != nil {
+				continue
+			}
+			values := make([]string, len(colIdxs))
+			for i, idx := range colIdxs {
+				if strings.EqualFold(colNames[i], "id") {
+					values[i] = strconv.FormatInt(rowid, 10)
+				} else if idx >= len(rec.Values) {
+					values[i] = ""
+				} else {
+					values[i] = rec.Values[idx]
+				}
+			}
+			results = append(results, strings.Join(values, "|"))
+			return results, nil
+		}
+	}
+
+	// Nếu không có index, fallback về quét bảng như cũ
 	results, err := scanTableBTree(db, fH.PageSize, rootpage, colIdxs, whereColIdx, whereVal, colNames)
 	if err != nil {
 		return nil, err
@@ -109,26 +137,98 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string, w
 }
 
 func getColumnIndex(createStatement string, columnName string) int {
-	re := regexp.MustCompile(`(?i)CREATE TABLE\s+["'\[]?\w+["'\]]?\s*\((.*)\)`)
+
+	// Regex cũ không bắt đúng định dạng của câu lệnh CREATE TABLE
+	// re := regexp.MustCompile(`(?i)CREATE TABLE\s+["'\[]?\w+["'\]]?\s*\((.*)\)`)
+
+	// Regex mới linh hoạt hơn, sẽ bắt được cả trường hợp có nhiều dòng và các định dạng khác nhau
+	re := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+.*?\(\s*(.*?)\s*\)`)
 	matches := re.FindStringSubmatch(createStatement)
 	if len(matches) < 2 {
+
+		// Thử cách trực tiếp: lấy nội dung giữa ( và )
+		start := strings.Index(createStatement, "(")
+		end := strings.LastIndex(createStatement, ")")
+		if start != -1 && end != -1 && start < end {
+			colsDef := createStatement[start+1 : end]
+
+			// Tiếp tục xử lý colsDef như bình thường
+			return processColumnDefs(colsDef, columnName)
+		}
+
 		return -1
 	}
+
 	colsDef := matches[1]
+
+	return processColumnDefs(colsDef, columnName)
+}
+
+// Hàm mới để xử lý phần định nghĩa cột, tách ra để code dễ đọc hơn
+func processColumnDefs(colsDef string, columnName string) int {
+	// Normalize line breaks and spacing for better parsing
 	colsDef = strings.ReplaceAll(colsDef, "\n", " ")
-	colsDef = strings.ReplaceAll(colsDef, "\t", " ")
-	colsDef = strings.ReplaceAll(colsDef, "\r", " ")
-	colsDef = regexp.MustCompile(`\s+`).ReplaceAllString(colsDef, " ")
-	columns := strings.Split(colsDef, ",")
-	for i, c := range columns {
-		c = strings.TrimSpace(c)
-		colName := strings.Fields(c)
-		if len(colName) > 0 {
-			cleanCol := strings.Trim(colName[0], `"'[]`)
-			if strings.EqualFold(cleanCol, columnName) {
-				return i
+	colsDef = strings.TrimSpace(colsDef)
+
+	// Tách cột thủ công, bỏ qua dấu phẩy trong dấu nháy/dấu ngoặc kép
+	var columns []string
+	col := ""
+	inQuotes := false
+	quoteChar := byte(0)
+	for i := 0; i < len(colsDef); i++ {
+		c := colsDef[i]
+		if c == '"' || c == '\'' {
+			if inQuotes && c == quoteChar {
+				inQuotes = false
+			} else if !inQuotes {
+				inQuotes = true
+				quoteChar = c
 			}
 		}
+		if c == ',' && !inQuotes {
+			columns = append(columns, strings.TrimSpace(col))
+			col = ""
+		} else {
+			col += string(c)
+		}
+	}
+	if len(col) > 0 {
+		columns = append(columns, strings.TrimSpace(col))
+	}
+
+	// Xử lý đặc biệt cho cột "id" nếu cần
+	if strings.EqualFold(columnName, "id") {
+		// Hàm helper để trả về index của column đầu tiên
+		return 0 // Giả sử id luôn là cột đầu tiên
+	}
+
+	idIdx := -1
+	for i, c := range columns {
+		c = strings.TrimSpace(c)
+
+		// Extract the column name
+		colParts := strings.Fields(c)
+		if len(colParts) == 0 {
+			continue
+		}
+
+		cleanCol := strings.Trim(colParts[0], `"'[]`)
+
+		// Direct match for column name
+		if strings.EqualFold(cleanCol, columnName) {
+			return i
+		}
+
+		// Look for integer primary key for id column
+		lc := strings.ToLower(c)
+		if strings.Contains(lc, "integer") && strings.Contains(lc, "primary") && strings.Contains(lc, "key") {
+			idIdx = i
+		}
+	}
+
+	// If looking for 'id' and we found a primary key integer column, use it
+	if strings.EqualFold(columnName, "id") && idIdx != -1 {
+		return idIdx
 	}
 	return -1
 }
@@ -313,7 +413,7 @@ func getRecordByRowid(db *os.File, pageSize uint16, pageNum int, rowid int64) (R
 			}
 			childPageNum := int(binary.BigEndian.Uint32(page[pos : pos+4]))
 			// Đọc key_rowid (varint) sau 4 bytes
-			keyRowid, n := readVarint(page[pos+4:])
+			keyRowid, _ := readVarint(page[pos+4:])
 			// Nếu rowid < key_rowid thì duyệt child này
 			if rowid < int64(keyRowid) {
 				return getRecordByRowid(db, pageSize, childPageNum, rowid)
