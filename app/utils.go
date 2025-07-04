@@ -312,21 +312,42 @@ func readValueBySerialType(data []byte, serialType int) (string, int) {
 	case 0:
 		return "NULL", 0
 	case 1:
+		if len(data) < 1 {
+			return "", 0
+		}
 		return strconv.Itoa(int(int8(data[0]))), 1
 	case 2:
+		if len(data) < 2 {
+			return "", 0
+		}
 		return strconv.Itoa(int(int16(binary.BigEndian.Uint16(data)))), 2
 	case 3:
+		if len(data) < 3 {
+			return "", 0
+		}
 		val := int(data[0])<<16 | int(data[1])<<8 | int(data[2])
 		return strconv.Itoa(val), 3
 	case 4:
+		if len(data) < 4 {
+			return "", 0
+		}
 		return strconv.Itoa(int(int32(binary.BigEndian.Uint32(data)))), 4
 	case 5:
+		if len(data) < 6 {
+			return "", 0
+		}
 		val := int64(data[0])<<40 | int64(data[1])<<32 | int64(data[2])<<24 | int64(data[3])<<16 | int64(data[4])<<8 | int64(data[5])
 		return strconv.FormatInt(val, 10), 6
 	case 6:
+		if len(data) < 8 {
+			return "", 0
+		}
 		val := binary.BigEndian.Uint64(data)
 		return strconv.FormatInt(int64(val), 10), 8
 	case 7:
+		if len(data) < 8 {
+			return "", 0
+		}
 		bits := binary.BigEndian.Uint64(data)
 		f := math.Float64frombits(bits)
 		return strconv.FormatFloat(f, 'f', -1, 64), 8
@@ -339,9 +360,15 @@ func readValueBySerialType(data []byte, serialType int) (string, int) {
 			length := 0
 			if serialType%2 == 0 {
 				length = (serialType - 12) / 2 // BLOB
+				if len(data) < length {
+					return "", 0
+				}
 				return fmt.Sprintf("BLOB[%d]", length), length
 			} else {
 				length = (serialType - 13) / 2 // TEXT
+				if len(data) < length {
+					return "", 0
+				}
 				return string(data[:length]), length
 			}
 		}
