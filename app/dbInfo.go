@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func dBInfo(databaseFilePath string) (uint16, uint16, error) {
+func dbInfo(databaseFilePath string) (uint16, uint16, error) {
 	databaseFile, err := os.Open(databaseFilePath)
 	if err != nil {
 		return 0, 0, err

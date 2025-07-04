@@ -13,7 +13,7 @@ func main() {
 	lower := strings.ToLower(command)
 	switch {
 	case lower == ".dbinfo":
-		pageSize, numberOfTables, err := dBInfo(databaseFilePath)
+		pageSize, numberOfTables, err := dbInfo(databaseFilePath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -40,6 +40,20 @@ func main() {
 		}
 
 		fmt.Println(cnt)
+
+	case strings.HasPrefix(lower, "select"):
+		parts := strings.Fields(command)
+		if len(parts) != 4 {
+			log.Fatal("Invalid select query format")
+		}
+		tableName := parts[len(parts)-1]
+		colName := parts[1]
+		data, err := readDataFromSelect(databaseFilePath, tableName, colName)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		fmt.Println(data)
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)

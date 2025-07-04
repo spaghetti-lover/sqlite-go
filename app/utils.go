@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
+	"strconv"
 )
 
 type FileHeader struct {
@@ -255,4 +258,93 @@ func parsePageHeader(r io.Reader) PageHeader {
 		FragmentedFreeBytes: fragmentedFreeBytes,
 		CellPointers:        cellPointers,
 	}
+}
+
+type Record struct {
+	Values []string
+}
+
+func parseRecord(data []byte, offset int) (Record, error) {
+	pos := offset
+	// đọc header size
+	headerSize, n := readVarint(data[pos:])
+	pos += n
+
+	// đọc serial types
+	serials := []int{}
+	for pos < offset+headerSize {
+		serial, n := readVarint(data[pos:])
+		serials = append(serials, serial)
+		pos += n
+	}
+
+	// đọc body theo từng serial
+	values := []string{}
+	for _, st := range serials {
+		val, size := readValueBySerialType(data[pos:], st)
+		values = append(values, val)
+		pos += size
+	}
+	return Record{Values: values}, nil
+}
+
+// Trả về giá trị varint và số byte đã đọc
+func readVarint(data []byte) (int, int) {
+	var result int
+	for i := 0; i < 9 && i < len(data); i++ {
+		b := data[i]
+		result = (result << 7) | int(b&0x7F)
+		if b&0x80 == 0 {
+			return result, i + 1
+		}
+	}
+	// Nếu không gặp byte kết thúc, byte thứ 9 là toàn bộ
+	if len(data) >= 9 {
+		b := data[8]
+		result = (result << 8) | int(b)
+		return result, 9
+	}
+	return 0, 0 // lỗi
+}
+
+func readValueBySerialType(data []byte, serialType int) (string, int) {
+	switch serialType {
+	case 0:
+		return "NULL", 0
+	case 1:
+		return strconv.Itoa(int(int8(data[0]))), 1
+	case 2:
+		return strconv.Itoa(int(int16(binary.BigEndian.Uint16(data)))), 2
+	case 3:
+		val := int(data[0])<<16 | int(data[1])<<8 | int(data[2])
+		return strconv.Itoa(val), 3
+	case 4:
+		return strconv.Itoa(int(int32(binary.BigEndian.Uint32(data)))), 4
+	case 5:
+		val := int64(data[0])<<40 | int64(data[1])<<32 | int64(data[2])<<24 | int64(data[3])<<16 | int64(data[4])<<8 | int64(data[5])
+		return strconv.FormatInt(val, 10), 6
+	case 6:
+		val := binary.BigEndian.Uint64(data)
+		return strconv.FormatInt(int64(val), 10), 8
+	case 7:
+		bits := binary.BigEndian.Uint64(data)
+		f := math.Float64frombits(bits)
+		return strconv.FormatFloat(f, 'f', -1, 64), 8
+	case 8:
+		return "0", 0
+	case 9:
+		return "1", 0
+	default:
+		if serialType >= 12 {
+			length := 0
+			if serialType%2 == 0 {
+				length = (serialType - 12) / 2 // BLOB
+				return fmt.Sprintf("BLOB[%d]", length), length
+			} else {
+				length = (serialType - 13) / 2 // TEXT
+				return string(data[:length]), length
+			}
+		}
+	}
+	return "", 0 // fallback
 }
