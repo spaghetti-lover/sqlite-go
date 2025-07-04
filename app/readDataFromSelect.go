@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -85,53 +86,98 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string, w
 			return nil, fmt.Errorf("where column %s not found in table %s", whereCol, tableName)
 		}
 	}
-	// Read the data from the root page based on the column name
-	dataPage := make([]byte, fH.PageSize)
-	offset := int64((rootpage - 1) * int(fH.PageSize))
-	if _, err := db.Seek(offset, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek to root page: %w", err)
-	}
-	if _, err := db.Read(dataPage); err != nil {
-		return nil, fmt.Errorf("failed to read root page: %w", err)
-	}
-	dataPageHeader := parsePageHeader(bytes.NewReader(dataPage))
-	results := []string{}
-	for _, cellPtr := range dataPageHeader.CellPointers {
-		rec, err := parseRecord(dataPage, int(cellPtr))
-		if err != nil {
-			continue
-		}
-
-		if whereColIdx != -1 {
-			if whereColIdx >= len(rec.Values) || rec.Values[whereColIdx] != whereVal {
-				continue
-			}
-		}
-
-		values := make([]string, len(colIdxs))
-		for i, idx := range colIdxs {
-			if idx >= len(rec.Values) {
-				values[i] = ""
-			} else {
-				values[i] = rec.Values[idx]
-			}
-		}
-		results = append(results, strings.Join(values, "|"))
+	// Scan the table B-tree
+	results, err := scanTableBTree(db, fH.PageSize, rootpage, colIdxs, whereColIdx, whereVal)
+	if err != nil {
+		return nil, err
 	}
 	return results, nil
 }
 
 func getColumnIndex(createStatement string, columnName string) int {
-	re := regexp.MustCompile(`(?i)CREATE TABLE \w+\s*\(([^\)]+)\)`)
+	re := regexp.MustCompile(`(?i)CREATE TABLE\s+["'\[]?\w+["'\]]?\s*\((.*)\)`)
 	matches := re.FindStringSubmatch(createStatement)
 	if len(matches) < 2 {
 		return -1
 	}
-	columns := strings.Split(matches[1], ",")
+	colsDef := matches[1]
+	colsDef = strings.ReplaceAll(colsDef, "\n", " ")
+	colsDef = strings.ReplaceAll(colsDef, "\t", " ")
+	colsDef = strings.ReplaceAll(colsDef, "\r", " ")
+	colsDef = regexp.MustCompile(`\s+`).ReplaceAllString(colsDef, " ")
+	columns := strings.Split(colsDef, ",")
 	for i, c := range columns {
-		if strings.Split(strings.TrimSpace(c), " ")[0] == columnName {
-			return i
+		c = strings.TrimSpace(c)
+		colName := strings.Fields(c)
+		if len(colName) > 0 {
+			cleanCol := strings.Trim(colName[0], `"'[]`)
+			if strings.EqualFold(cleanCol, columnName) {
+				return i
+			}
 		}
 	}
 	return -1
+}
+
+func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, whereColIdx int, whereVal string) ([]string, error) {
+	offset := int64((pageNum - 1) * int(pageSize))
+	page := make([]byte, pageSize)
+
+	if _, err := db.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	if _, err := db.Read(page); err != nil {
+		return nil, err
+	}
+
+	pageType := page[0]
+	results := []string{}
+
+	switch pageType {
+	case 13:
+		dataPageHeader := parsePageHeader(bytes.NewReader(page))
+		for _, cellPtr := range dataPageHeader.CellPointers {
+			rec, err := parseRecord(page, int(cellPtr))
+			if err != nil {
+				continue // skip invalid record
+			}
+			if whereColIdx != -1 {
+				if whereColIdx >= len(rec.Values) || rec.Values[whereColIdx] != whereVal {
+					continue // skip non-matching record
+				}
+			}
+			values := make([]string, len(colIdxs))
+			for i, idx := range colIdxs {
+				if idx >= len(rec.Values) {
+					values[i] = ""
+				} else {
+					values[i] = rec.Values[idx]
+				}
+			}
+			results = append(results, strings.Join(values, "|"))
+		}
+	case 5:
+		dataPageHeader := parsePageHeader(bytes.NewReader(page))
+		for _, cellPtr := range dataPageHeader.CellPointers {
+			if int(cellPtr)+4 > len(page) {
+				continue // skip invalid cell pointer
+			}
+			childPageNum := int(binary.BigEndian.Uint32(page[cellPtr : cellPtr+4]))
+			childResults, err := scanTableBTree(db, pageSize, childPageNum, colIdxs, whereColIdx, whereVal)
+			if err != nil {
+				continue // skip child page if error
+			}
+			results = append(results, childResults...)
+		}
+		// right-most pointer nằm ở offset 8-12 của page
+		if len(page) >= 12 {
+			rightMostPtr := int(binary.BigEndian.Uint32(page[8:12]))
+			childResults, err := scanTableBTree(db, pageSize, rightMostPtr, colIdxs, whereColIdx, whereVal)
+			if err == nil {
+				results = append(results, childResults...)
+			}
+		}
+	}
+	return results, nil
 }
