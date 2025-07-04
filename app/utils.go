@@ -294,8 +294,7 @@ func parseRecord(data []byte, offset int) (Record, error) {
 	}
 	// 5 . Parse values based on serial types
 	values := []string{}
-	bodyPos := offset + headerSize + (pos - headerStart - headerSize)
-	bodyPos = pos
+	bodyPos := pos
 	for _, st := range serialTypes {
 		val, size := readValueBySerialType(data[bodyPos:], st)
 		values = append(values, val)

@@ -56,7 +56,7 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		fmt.Printf("DEBUG: rec.Values = %#v\n", rec.Values)
 
 		if rec.Values[0] == "table" && strings.EqualFold(rec.Values[1], tableName) {
-			rootpage = 0
+			// rootpage = 0
 			fmt.Sscan(rec.Values[3], "%d", &rootpage)
 			createSQL = rec.Values[4]
 			break
