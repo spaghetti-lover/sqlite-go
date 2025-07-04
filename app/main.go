@@ -53,7 +53,9 @@ func main() {
 			log.Fatal(err)
 			return
 		}
-		fmt.Println(data)
+		for _, value := range data {
+			fmt.Println(value)
+		}
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -55,9 +56,13 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		fmt.Printf("DEBUG: rec.Values = %#v\n", rec.Values)
 
 		if rec.Values[0] == "table" && strings.EqualFold(rec.Values[1], tableName) {
-			// rootpage = 0
-			fmt.Sscan(rec.Values[3], "%d", &rootpage)
-			fmt.Println("DEBUG: rootpage =", rootpage)
+			rootpageStr := strings.TrimSpace(rec.Values[3])
+			rp, err := strconv.Atoi(rootpageStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert root page string to int: %w", err)
+			} else {
+				rootpage = rp
+			}
 			createSQL = rec.Values[4]
 			break
 		}
