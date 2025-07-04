@@ -57,11 +57,12 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		if rec.Values[0] == "table" && strings.EqualFold(rec.Values[1], tableName) {
 			// rootpage = 0
 			fmt.Sscan(rec.Values[3], "%d", &rootpage)
+			fmt.Println("DEBUG: rootpage =", rootpage)
 			createSQL = rec.Values[4]
 			break
 		}
 	}
-	if rootpage == 0 {
+	if rootpage == 0 || createSQL == "" {
 		return nil, fmt.Errorf("table %s not found in database", tableName)
 	}
 	// Read the table's root page
