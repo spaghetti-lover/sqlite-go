@@ -43,12 +43,15 @@ func main() {
 
 	case strings.HasPrefix(lower, "select"):
 		parts := strings.Fields(command)
-		if len(parts) != 4 {
+		if len(parts) < 4 {
 			log.Fatal("Invalid select query format")
 		}
 		tableName := parts[len(parts)-1]
-		colName := parts[1]
-		data, err := readDataFromSelect(databaseFilePath, tableName, colName)
+		cols := strings.Split(parts[1], ", ")
+		for i := range cols {
+			cols[i] = strings.TrimSpace(cols[i])
+		}
+		data, err := readDataFromSelect(databaseFilePath, tableName, cols)
 		if err != nil {
 			log.Fatal(err)
 			return

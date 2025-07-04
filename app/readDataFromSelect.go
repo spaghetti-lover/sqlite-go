@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]string, error) {
+func readDataFromSelect(databaseFilePath, tableName string, colNames []string) ([]string, error) {
 	// Find the root page
 	db, err := os.Open(databaseFilePath)
 	if err != nil {
@@ -71,27 +71,38 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		return nil, fmt.Errorf("table %s not found in database", tableName)
 	}
 	// Read the table's root page
-	colIdx := getColumnIndex(createSQL, colName)
-	if colIdx == -1 {
-		return nil, fmt.Errorf("column %s not found in table %s", colName, tableName)
+	colIdxs := make([]int, len(colNames))
+	for i, col := range colNames {
+		colIdxs[i] = getColumnIndex(createSQL, col)
+		if colIdxs[i] == -1 {
+			return nil, fmt.Errorf("column %s not found in table %s", col, tableName)
+		}
 	}
 	// Read the data from the root page based on the column name
 	dataPage := make([]byte, fH.PageSize)
 	offset := int64((rootpage - 1) * int(fH.PageSize))
 	if _, err := db.Seek(offset, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek to root page %d: %w", rootpage, err)
+		return nil, fmt.Errorf("failed to seek to root page: %w", err)
 	}
 	if _, err := db.Read(dataPage); err != nil {
-		return nil, fmt.Errorf("failed to read root page %d: %w", rootpage, err)
+		return nil, fmt.Errorf("failed to read root page: %w", err)
 	}
 	dataPageHeader := parsePageHeader(bytes.NewReader(dataPage))
 	results := []string{}
 	for _, cellPtr := range dataPageHeader.CellPointers {
 		rec, err := parseRecord(dataPage, int(cellPtr))
-		if err != nil || colIdx >= len(rec.Values) {
+		if err != nil {
 			continue
 		}
-		results = append(results, rec.Values[colIdx])
+		values := make([]string, len(colIdxs))
+		for i, idx := range colIdxs {
+			if idx >= len(rec.Values) {
+				values[i] = ""
+			} else {
+				values[i] = rec.Values[idx]
+			}
+		}
+		results = append(results, strings.Join(values, "|"))
 	}
 	return results, nil
 }
