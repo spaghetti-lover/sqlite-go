@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
-
-	"github.com/xwb1989/sqlparser"
 )
 
 func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]string, error) {
@@ -66,21 +65,7 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		return nil, fmt.Errorf("table %s not found in database", tableName)
 	}
 	// Read the table's root page
-	stmt, err := sqlparser.Parse(createSQL)
-	if err != nil {
-		return nil, err
-	}
-	create, ok := stmt.(*sqlparser.DDL)
-	if !ok {
-		return nil, fmt.Errorf("failed to parse CREATE TABLE statement for table %s", err)
-	}
-	colIdx := -1
-	for i, col := range create.TableSpec.Columns {
-		if strings.EqualFold(col.Name.String(), colName) {
-			colIdx = i
-			break
-		}
-	}
+	colIdx := getColumnIndex(createSQL, colName)
 	if colIdx == -1 {
 		return nil, fmt.Errorf("column %s not found in table %s", colName, tableName)
 	}
@@ -103,4 +88,19 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		results = append(results, rec.Values[colIdx])
 	}
 	return results, nil
+}
+
+func getColumnIndex(createStatement string, columnName string) int {
+	re := regexp.MustCompile(`(?i)CREATE TABLE \w+\s*\(([^\)]+)\)`)
+	matches := re.FindStringSubmatch(createStatement)
+	if len(matches) < 2 {
+		return -1
+	}
+	columns := strings.Split(matches[1], ",")
+	for i, c := range columns {
+		if strings.Split(strings.TrimSpace(c), " ")[0] == columnName {
+			return i
+		}
+	}
+	return -1
 }
