@@ -46,8 +46,21 @@ func main() {
 		if len(parts) < 4 {
 			log.Fatal("Invalid select query format")
 		}
-		tableName := parts[len(parts)-1]
-		cols := strings.Split(parts[1], ", ")
+		// Tìm vị trí "from"
+		fromIdx := -1
+		for i, p := range parts {
+			if strings.ToLower(p) == "from" {
+				fromIdx = i
+				break
+			}
+		}
+		if fromIdx == -1 || fromIdx < 2 {
+			log.Fatal("Invalid select query format")
+		}
+		tableName := parts[fromIdx+1]
+		// Ghép lại các cột từ sau SELECT đến trước FROM
+		colStr := strings.Join(parts[1:fromIdx], " ")
+		cols := strings.Split(colStr, ",")
 		for i := range cols {
 			cols[i] = strings.TrimSpace(cols[i])
 		}
