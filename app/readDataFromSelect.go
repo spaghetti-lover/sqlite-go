@@ -143,7 +143,7 @@ func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, wh
 				continue
 			}
 			if whereColIdx != -1 {
-				if whereColIdx >= len(rec.Values) || rec.Values[whereColIdx] != whereVal {
+				if strings.TrimSpace(strings.ToLower(rec.Values[whereColIdx])) != strings.TrimSpace(strings.ToLower(whereVal)) {
 					continue
 				}
 			}
