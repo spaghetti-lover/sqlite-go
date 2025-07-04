@@ -87,7 +87,7 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string, w
 		}
 	}
 	// Scan the table B-tree
-	results, err := scanTableBTree(db, fH.PageSize, rootpage, colIdxs, whereColIdx, whereVal)
+	results, err := scanTableBTree(db, fH.PageSize, rootpage, colIdxs, whereColIdx, whereVal, colNames)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func getColumnIndex(createStatement string, columnName string) int {
 	return -1
 }
 
-func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, whereColIdx int, whereVal string) ([]string, error) {
+func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, whereColIdx int, whereVal string, colNames []string) ([]string, error) {
 	offset := int64((pageNum - 1) * int(pageSize))
 	page := make([]byte, pageSize)
 
@@ -138,18 +138,21 @@ func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, wh
 	case 13:
 		dataPageHeader := parsePageHeader(bytes.NewReader(page))
 		for _, cellPtr := range dataPageHeader.CellPointers {
-			rec, err := parseRecord(page, int(cellPtr))
+			rowid, rec, err := parseRecordWithRowid(page, int(cellPtr))
 			if err != nil {
-				continue // skip invalid record
+				continue
 			}
 			if whereColIdx != -1 {
 				if whereColIdx >= len(rec.Values) || rec.Values[whereColIdx] != whereVal {
-					continue // skip non-matching record
+					continue
 				}
 			}
 			values := make([]string, len(colIdxs))
 			for i, idx := range colIdxs {
-				if idx >= len(rec.Values) {
+				// Nếu là cột id (INTEGER PRIMARY KEY), lấy rowid
+				if strings.EqualFold(colNames[i], "id") {
+					values[i] = strconv.Itoa(rowid)
+				} else if idx >= len(rec.Values) {
 					values[i] = ""
 				} else {
 					values[i] = rec.Values[idx]
@@ -164,7 +167,7 @@ func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, wh
 				continue // skip invalid cell pointer
 			}
 			childPageNum := int(binary.BigEndian.Uint32(page[cellPtr : cellPtr+4]))
-			childResults, err := scanTableBTree(db, pageSize, childPageNum, colIdxs, whereColIdx, whereVal)
+			childResults, err := scanTableBTree(db, pageSize, childPageNum, colIdxs, whereColIdx, whereVal, colNames)
 			if err != nil {
 				continue // skip child page if error
 			}
@@ -173,7 +176,7 @@ func scanTableBTree(db *os.File, pageSize uint16, pageNum int, colIdxs []int, wh
 		// right-most pointer nằm ở offset 8-12 của page
 		if len(page) >= 12 {
 			rightMostPtr := int(binary.BigEndian.Uint32(page[8:12]))
-			childResults, err := scanTableBTree(db, pageSize, rightMostPtr, colIdxs, whereColIdx, whereVal)
+			childResults, err := scanTableBTree(db, pageSize, rightMostPtr, colIdxs, whereColIdx, whereVal, colNames)
 			if err == nil {
 				results = append(results, childResults...)
 			}

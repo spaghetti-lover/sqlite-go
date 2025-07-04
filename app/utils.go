@@ -390,3 +390,37 @@ func readValueBySerialType(data []byte, serialType int) (string, int) {
 	}
 	return "", 0 // fallback
 }
+
+func parseRecordWithRowid(data []byte, offset int) (int, Record, error) {
+	// 1. Parse payload size (varint)
+	_, n := readVarint(data[offset:])
+	pos := offset + n
+
+	// 2. Parse rowid (varint)
+	rowid, n2 := readVarint(data[pos:])
+	pos += n2
+
+	// 3. Parse record header size (varint)
+	headerStart := pos
+	headerSize, n3 := readVarint(data[pos:])
+	pos += n3
+
+	// 4. Parse serial types
+	serialTypes := []int{}
+	headerBytesRead := pos - headerStart
+	for headerBytesRead < int(headerSize) {
+		serial, n := readVarint(data[pos:])
+		serialTypes = append(serialTypes, int(serial))
+		pos += n
+		headerBytesRead += n
+	}
+	// 5. Parse values based on serial types
+	values := []string{}
+	bodyPos := pos
+	for _, st := range serialTypes {
+		val, size := readValueBySerialType(data[bodyPos:], st)
+		values = append(values, val)
+		bodyPos += size
+	}
+	return rowid, Record{Values: values}, nil
+}
