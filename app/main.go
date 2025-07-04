@@ -64,7 +64,25 @@ func main() {
 		for i := range cols {
 			cols[i] = strings.TrimSpace(cols[i])
 		}
-		data, err := readDataFromSelect(databaseFilePath, tableName, cols)
+
+		// Parse WHERE nếu có
+		whereCol := ""
+		whereVal := ""
+		for i, p := range parts {
+			if strings.ToLower(p) == "where" && i+3 <= len(parts) {
+				whereCol = parts[i+1]
+				whereVal = strings.Join(parts[i+3:], " ")
+				whereVal = strings.Trim(whereVal, "'")
+				break
+			}
+		}
+		var data []string
+		var err error
+		if whereCol != "" {
+			data, err = readDataFromSelect(databaseFilePath, tableName, cols, whereCol, whereVal)
+		} else {
+			data, err = readDataFromSelect(databaseFilePath, tableName, cols, "", "")
+		}
 		if err != nil {
 			log.Fatal(err)
 			return

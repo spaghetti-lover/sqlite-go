@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func readDataFromSelect(databaseFilePath, tableName string, colNames []string) ([]string, error) {
+func readDataFromSelect(databaseFilePath, tableName string, colNames []string, whereCol string, whereVal string) ([]string, error) {
 	// Find the root page
 	db, err := os.Open(databaseFilePath)
 	if err != nil {
@@ -78,6 +78,13 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string) (
 			return nil, fmt.Errorf("column %s not found in table %s", col, tableName)
 		}
 	}
+	whereColIdx := -1
+	if whereCol != "" {
+		whereColIdx = getColumnIndex(createSQL, whereCol)
+		if whereColIdx == -1 {
+			return nil, fmt.Errorf("where column %s not found in table %s", whereCol, tableName)
+		}
+	}
 	// Read the data from the root page based on the column name
 	dataPage := make([]byte, fH.PageSize)
 	offset := int64((rootpage - 1) * int(fH.PageSize))
@@ -94,6 +101,13 @@ func readDataFromSelect(databaseFilePath, tableName string, colNames []string) (
 		if err != nil {
 			continue
 		}
+
+		if whereColIdx != -1 {
+			if whereColIdx >= len(rec.Values) || rec.Values[whereColIdx] != whereVal {
+				continue
+			}
+		}
+
 		values := make([]string, len(colIdxs))
 		for i, idx := range colIdxs {
 			if idx >= len(rec.Values) {
