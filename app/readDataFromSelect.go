@@ -53,7 +53,7 @@ func readDataFromSelect(databaseFilePath, tableName string, colName string) ([]s
 		if len(rec.Values) < 5 {
 			continue
 		}
-		fmt.Printf("DEBUG: rec.Values = %#v\n", rec.Values)
+		// fmt.Printf("DEBUG: rec.Values = %#v\n", rec.Values)
 
 		if rec.Values[0] == "table" && strings.EqualFold(rec.Values[1], tableName) {
 			rootpageStr := strings.TrimSpace(rec.Values[3])
